@@ -1,0 +1,8 @@
+{
+  "name": "roblox-inventory-proxy",
+  "version": "1.0.0",
+  "description": "Proxy for Roblox inventory API",
+  "scripts": {
+    "start": "node api/inventory.js"
+  }
+}
