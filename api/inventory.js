@@ -15,29 +15,52 @@ export default async function handler(req, res) {
 
   try {
     const allPasses = [];
+    const debug = {};
     
-    // Search catalog for ALL gamepasses created by this user
-    const url = `https://catalog.roblox.com/v1/search/items?category=Passes&creatorTargetId=${userId}&creatorType=User&limit=50&sortType=Relevance`;
+    // Method 1: Get user's games first
+    const gamesUrl = `https://games.roblox.com/v2/users/${userId}/games?accessFilter=Public&limit=50`;
+    const gamesRes = await fetch(gamesUrl);
+    const gamesData = await gamesRes.json();
+    debug.games = gamesData;
     
-    const response = await fetch(url);
-    const data = await response.json();
+    // Method 2: Try getting universes (all games, not just public)
+    const universesUrl = `https://games.roblox.com/v2/users/${userId}/games?accessFilter=All&limit=50`;
+    const universesRes = await fetch(universesUrl);
+    const universesData = await universesRes.json();
+    debug.universes = universesData;
     
-    console.log('Catalog response:', JSON.stringify(data));
+    // Method 3: Catalog search
+    const catalogUrl = `https://catalog.roblox.com/v1/search/items?category=Passes&creatorTargetId=${userId}&creatorType=User&limit=50`;
+    const catalogRes = await fetch(catalogUrl);
+    const catalogData = await catalogRes.json();
+    debug.catalog = catalogData;
     
-    if (data.data && data.data.length > 0) {
-      for (const pass of data.data) {
-        // Get price info for each gamepass
-        try {
-          const infoUrl = `https://economy.roblox.com/v1/game-passes/${pass.id}/game-pass-product-info`;
-          const infoRes = await fetch(infoUrl);
-          const info = await infoRes.json();
-          
+    // If we found games, get their gamepasses
+    const gamesToCheck = gamesData.data || universesData.data || [];
+    debug.gamesFound = gamesToCheck.length;
+    
+    for (const game of gamesToCheck) {
+      const passesUrl = `https://games.roblox.com/v1/games/${game.id}/game-passes?limit=100`;
+      const passesRes = await fetch(passesUrl);
+      const passesData = await passesRes.json();
+      
+      debug[`game_${game.id}_passes`] = passesData;
+      
+      if (passesData.data) {
+        for (const pass of passesData.data) {
           allPasses.push({
             id: pass.id,
-            name: info.Name || pass.name || 'Unknown',
-            price: info.PriceInRobux || 0
+            name: pass.name || 'Unknown',
+            price: pass.price || 0
           });
-        } catch (e) {
+        }
+      }
+    }
+    
+    // Add catalog passes if any
+    if (catalogData.data) {
+      for (const pass of catalogData.data) {
+        if (!allPasses.find(p => p.id === pass.id)) {
           allPasses.push({
             id: pass.id,
             name: pass.name || 'Unknown',
@@ -47,10 +70,12 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ data: allPasses });
+    return res.status(200).json({ 
+      data: allPasses,
+      debug: debug 
+    });
     
   } catch (error) {
-    console.error('Error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
